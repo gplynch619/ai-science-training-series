@@ -5,7 +5,7 @@ import time,math
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 os.environ["TF_XLA_FLAGS"] = "--tf_xla_auto_jit=2"
 # This control parallelism in Tensorflow
-parallel_threads = 128
+parallel_threads = 32
 # This controls how many batches to prefetch
 prefetch_buffer_size = 8 # tf.data.AUTOTUNE
 os.environ['OMP_NUM_THREADS'] = str(parallel_threads)
@@ -255,7 +255,6 @@ def train_epoch(i_epoch, step_in_epoch, train_ds, val_ds, network, optimizer, BA
         if i > 0: # skip the first measurement because it includes compile time
             sum += images_per_second
             sum2 += images_per_second * images_per_second
-        print(f"Finished step {step_in_epoch.numpy()} of {steps_per_epoch} in epoch {i_epoch.numpy()},loss={loss:.3f}, acc={acc:.3f} ({images_per_second:.3f} img/s).")
         start = time.time()
         # added for profiling to stop after some steps
         i += 1
@@ -267,7 +266,7 @@ def train_epoch(i_epoch, step_in_epoch, train_ds, val_ds, network, optimizer, BA
         i = i - 1
         mean_rate = sum / i
         stddev_rate = math.sqrt( sum2/i - mean_rate * mean_rate )
-        print(f'mean image/s = {mean_rate:8.2f}   standard deviation: {stddev_rate:8.2f}')
+        print("mean image/s = {8.2f} standard deviation: {8.2f}".format(mean_rate, stddev_rate))
         tf.profiler.experimental.stop()
         sys.exit(0)
 

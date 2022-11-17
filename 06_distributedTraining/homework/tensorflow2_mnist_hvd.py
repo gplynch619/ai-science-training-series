@@ -17,13 +17,7 @@ import tensorflow as tf
 import argparse
 import numpy as np
 
-### import horovod
-import horovod.tensorflow as hvd
-
 import time
-
-hvd.init()
-
 t0 = time.time()
 parser = argparse.ArgumentParser(description='TensorFlow MNIST Example')
 parser.add_argument('--batch_size', type=int, default=256, metavar='N',
@@ -39,6 +33,7 @@ parser.add_argument('--num_intra', default=0, help='set number intra', type=int)
 
 args = parser.parse_args()
 
+print("Starting")
 
 if args.device == 'cpu':
     tf.config.threading.set_intra_op_parallelism_threads(args.num_intra)
@@ -47,7 +42,7 @@ else:
     gpus = tf.config.experimental.list_physical_devices('GPU')
     for gpu in gpus:
         tf.config.experimental.set_memory_growth(gpu, True)
-    tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
+
 
 
 #---------------------------------------------------
@@ -60,10 +55,6 @@ dataset = tf.data.Dataset.from_tensor_slices(
     (tf.cast(mnist_images[..., tf.newaxis] / 255.0, tf.float32),
              tf.cast(mnist_labels, tf.int64))
 )
-
-##sharing training data w workers
-dataset = dataset.shard(num_shards=hvd.size(), index=hvd.rank())
-
 test_dset = tf.data.Dataset.from_tensor_slices(
     (tf.cast(x_test[..., tf.newaxis] / 255.0, tf.float32),
              tf.cast(y_test, tf.int64))
@@ -91,7 +82,7 @@ mnist_model = tf.keras.Sequential([
 ])
 loss = tf.losses.SparseCategoricalCrossentropy()
 
-opt = tf.optimizers.Adam(args.lr*hvd.size())
+opt = tf.optimizers.Adam(args.lr)
 
 checkpoint_dir = './checkpoints/tf2_mnist'
 checkpoint = tf.train.Checkpoint(model=mnist_model, optimizer=opt)
@@ -108,7 +99,6 @@ def training_step(images, labels):
         equality = tf.math.equal(pred, labels)
         accuracy = tf.math.reduce_mean(tf.cast(equality, tf.float32))
 
-    tape = hvd.DistributedGradientTape(tape)
     grads = tape.gradient(loss_value, mnist_model.trainable_variables)
     opt.apply_gradients(zip(grads, mnist_model.trainable_variables))
     return loss_value, accuracy
@@ -138,16 +128,9 @@ for ep in range(args.epochs):
     tt0 = time.time()
     for batch, (images, labels) in enumerate(dataset.take(nstep)):
         loss_value, acc = training_step(images, labels)
-        loss_value = hvd.allreduce(loss_value, average=True)
-        acc = hvd.allreduce(acc, average=True)
-
-        if(nstep==0 and ep==0 and hvd.rank()==0):
-            hvd.broadcast_variables(mnist_model.variables, root_rank=0)
-            hvd.broadcast_variables(opt.variables(), root_rank=0)
-
         training_loss += loss_value/nstep
         training_acc += acc/nstep
-        if (batch%100 == 0) and (hvd.rank()==0): 
+        if batch % 100 == 0: 
             checkpoint.save(checkpoint_dir)
             print('Epoch - %d, step #%06d/%06d\tLoss: %.6f' % (ep, batch, nstep, loss_value))
     # Testing

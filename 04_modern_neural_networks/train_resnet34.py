@@ -1,4 +1,6 @@
 import sys, os
+import matplotlib.pyplot as plt
+import numpy as np
 import time
 
 # This limits the amount of memory used:
@@ -226,12 +228,16 @@ def train_epoch(i_epoch, step_in_epoch, train_ds, val_ds, network, optimizer, BA
     steps_validation = int(50000 / BATCH_SIZE)
 
     start = time.time()
+    loss_arr = []
+    acc_arr = []
     for train_images, train_labels in train_ds.take(steps_per_epoch):
         if step_in_epoch > steps_per_epoch: break
         else: step_in_epoch.assign_add(1)
 
         # Peform the training step for this batch
         loss, acc = training_step(network, optimizer, train_images, train_labels)
+        loss_arr.append(loss)
+        acc_arr.append(acc)
         end = time.time()
         images_per_second = BATCH_SIZE / (end - start)
         print(f"Finished step {step_in_epoch.numpy()} of {steps_per_epoch} in epoch {i_epoch.numpy()},loss={loss:.3f}, acc={acc:.3f} ({images_per_second:.3f} img/s).")
@@ -253,7 +259,7 @@ def train_epoch(i_epoch, step_in_epoch, train_ds, val_ds, network, optimizer, BA
     mean_accuracy /= steps_validation
 
     print(f"Validation accuracy after epoch {i_epoch.numpy()}: {mean_accuracy:.4f}.")
-
+    return loss_arr, acc_arr
 
 
 def prepare_data_loader(BATCH_SIZE):
@@ -300,7 +306,7 @@ def main():
     # Here's some configuration:
     #########################################################################
     BATCH_SIZE = 256
-    N_EPOCHS = 10
+    N_EPOCHS = 1
 
     train_ds, val_ds = prepare_data_loader(BATCH_SIZE)
 
@@ -336,10 +342,24 @@ def main():
     if latest_checkpoint:
         checkpoint.restore(latest_checkpoint)
 
+    loss_arr = []
+    acc_arr = []
     while epoch < N_EPOCHS:
-        train_epoch(epoch, step_in_epoch, train_ds, val_ds, network, optimizer, BATCH_SIZE, checkpoint)
+        loss_arr, acc_arr = train_epoch(epoch, step_in_epoch, train_ds, val_ds, network, optimizer, BATCH_SIZE, checkpoint)
         epoch.assign_add(1)
         step_in_epoch.assign(0)
+
+    fig,ax = plt.subplots(1, 2, figsize=(16,5))
+    it = len(loss_arr)
+    iterations = np.arange(it)
+    ax[0].plot(iterations, loss_arr)
+    ax[1].plot(iterations, acc_arr)
+    ax[0].set_xlabel("Iteration")
+    ax[1].set_xlabel("Iteration")
+    ax[0].set_ylabel("Loss")
+    ax[1].set_ylable("Accuracy")
+    plt.savefig("hw4_fig.pdf",dpi=300, bbox_inches='tight')
+
 
 if __name__ == "__main__":
     main()
